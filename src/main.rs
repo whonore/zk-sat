@@ -1,7 +1,15 @@
-use std::collections::{HashMap, HashSet};
-use std::fmt;
-use std::io;
-use std::ops;
+#![no_std]
+#![no_main]
+
+extern crate alloc;
+
+use alloc::boxed::Box;
+use alloc::collections::{BTreeMap, BTreeSet};
+use alloc::vec::Vec;
+use core::fmt;
+use core::ops;
+
+use nexus_rt::{println, Write};
 
 type Id = u32;
 
@@ -145,11 +153,11 @@ impl Clause {
     }
 
     // Collect all variable names.
-    pub fn all_vars(&self) -> HashSet<Id> {
+    pub fn all_vars(&self) -> BTreeSet<Id> {
         use Clause::*;
         match self {
-            Literal(_) => HashSet::new(),
-            Variable(var, _) => HashSet::from([*var]),
+            Literal(_) => BTreeSet::new(),
+            Variable(var, _) => BTreeSet::from([*var]),
             Disjunction(lhs, rhs) => lhs.all_vars().union(&rhs.all_vars()).copied().collect(),
         }
     }
@@ -168,8 +176,8 @@ impl Clause {
         }
     }
 
-    // Simplify disjunctions by replacing `true || x` or `x || true` with
-    // `true` and `false || x` or `x || false` with `x`.
+    // Simplify disjunctions by replacing `true \/ x` or `x \/ true` with
+    // `true` and `false \/ x` or `x \/ false` with `x`.
     fn simplify_step(&mut self) -> bool {
         use Clause::*;
         match self {
@@ -203,38 +211,39 @@ impl Clause {
     }
 }
 
-#[test]
-fn test_subst() {
-    assert_eq!(Clause::var(0).subst(0, true), Clause::Literal(true));
-    assert_eq!(Clause::var(1).subst(0, true), Clause::var(1));
-    assert_eq!((!Clause::var(0)).subst(0, true), Clause::Literal(false));
-    assert_eq!(
-        (Clause::Literal(false) | !Clause::var(0)).subst(0, true),
-        Clause::Literal(false) | Clause::Literal(false)
-    );
-}
+// #[test]
+// fn test_subst() {
+//     assert_eq!(Clause::var(0).subst(0, true), Clause::Literal(true));
+//     assert_eq!(Clause::var(1).subst(0, true), Clause::var(1));
+//     assert_eq!((!Clause::var(0)).subst(0, true), Clause::Literal(false));
+//     assert_eq!(
+//         (Clause::Literal(false) | !Clause::var(0)).subst(0, true),
+//         Clause::Literal(false) | Clause::Literal(false)
+//     );
+// }
 
-#[test]
-fn test_simplify() {
-    assert_eq!(
-        (Clause::Literal(true) | Clause::Literal(false)).simplify(),
-        Clause::Literal(true)
-    );
-    assert_eq!(
-        (Clause::Literal(true) | !Clause::var(0)).simplify(),
-        Clause::Literal(true)
-    );
-    assert_eq!(
-        (Clause::var(1) | Clause::Literal(false)).simplify(),
-        Clause::var(1)
-    );
-}
+// #[test]
+// fn test_simplify() {
+//     assert_eq!(
+//         (Clause::Literal(true) | Clause::Literal(false)).simplify(),
+//         Clause::Literal(true)
+//     );
+//     assert_eq!(
+//         (Clause::Literal(true) | !Clause::var(0)).simplify(),
+//         Clause::Literal(true)
+//     );
+//     assert_eq!(
+//         (Clause::var(1) | Clause::Literal(false)).simplify(),
+//         Clause::var(1)
+//     );
+// }
 
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Debug)]
 struct CNF {
     clauses: Vec<Clause>,
-    unassigned: HashSet<Id>,
-    assigned: HashMap<Id, bool>,
+    unassigned: BTreeSet<Id>,
+    assigned: BTreeMap<Id, bool>,
 }
 
 impl fmt::Display for CNF {
@@ -254,13 +263,13 @@ impl CNF {
         let unassigned = clauses
             .iter()
             .map(|clause| clause.all_vars())
-            .fold(HashSet::new(), |unassigned, vars| {
+            .fold(BTreeSet::new(), |unassigned, vars| {
                 unassigned.union(&vars).copied().collect()
             });
         (CNF {
             clauses,
             unassigned,
-            assigned: HashMap::new(),
+            assigned: BTreeMap::new(),
         })
         .simplify()
     }
@@ -329,7 +338,7 @@ impl CNF {
     }
 
     // Ref: https://en.wikipedia.org/wiki/DPLL_algorithm
-    pub fn find_sat(self) -> Option<HashMap<Id, bool>> {
+    pub fn find_sat(self) -> Option<BTreeMap<Id, bool>> {
         let mut cnf = self;
         // Eliminate unit clauses.
         while let Some((var, polarity)) = cnf.clauses.iter().find_map(|clause| clause.get_unit()) {
@@ -362,31 +371,52 @@ impl CNF {
     }
 }
 
-#[test]
-fn test_sat() {
-    let tests = [
-        "0",
-        "0 \\/ 1",
-        "0 /\\ 1",
-        "0 \\/ !1 /\\ 1",
-        "0 \\/ !1 /\\ !1 \\/ !0",
-    ];
-    for clauses in tests {
-        assert!(CNF::parse(clauses).unwrap().find_sat().is_some());
-    }
-}
+// #[test]
+// fn test_sat() {
+//     let tests = [
+//         r#"0"#,
+//         r#"0 \/ 1"#,
+//         r#"0 /\ 1"#,
+//         r#"0 \/ !1 /\ 1"#,
+//         r#"0 \/ !1 /\ !1 \/ !0"#,
+//     ];
+//     for clauses in tests {
+//         assert!(CNF::parse(clauses).unwrap().find_sat().is_some());
+//     }
+// }
 
-#[test]
-fn test_unsat() {
-    let tests = ["0 /\\ !0", "0 \\/ !1 \\/ 2 /\\ 1 \\/ 0 /\\ !2 /\\ !0"];
-    for clauses in tests {
-        assert!(CNF::parse(clauses).unwrap().find_sat().is_none());
-    }
-}
+// #[test]
+// fn test_unsat() {
+//     let tests = [r#"0 /\ !0"#, r#"0 \/ !1 \/ 2 /\ 1 \/ 0 /\ !2 /\ !0"#];
+//     for clauses in tests {
+//         assert!(CNF::parse(clauses).unwrap().find_sat().is_none());
+//     }
+// }
 
+#[nexus_rt::main]
 fn main() {
-    for clause in io::stdin().lines() {
-        let cnf = CNF::parse(clause.as_ref().unwrap()).unwrap();
-        println!("{}: {:?}", clause.unwrap(), cnf.find_sat());
+    // Most tests are commented out to speed up proving.
+    let sat_tests = [
+        // r#"0"#,
+        r#"0 \/ 1"#,
+        // r#"0 /\ 1"#,
+        // r#"0 \/ !1 /\ 1"#,
+        // r#"0 \/ !1 /\ !1 \/ !0"#,
+        // r#"!4 /\ 2 \/ 3 /\ !0 \/ 1 /\ 3 /\ 2"#,
+        // r#"6 \/ 1 /\ !5 \/ !0 /\ !0 /\ !4 \/ !6 /\ 4 /\ 5 /\ !0 \/ 2 /\ 5 /\ 5 \/ 0"#,
+    ];
+    let unsat_tests = [
+        r"0 /\ !0",
+        // r#"0 \/ !1 \/ 2 /\ 1 \/ 0 /\ !2 /\ !0"#,
+        // r#"!1 /\ 5 \/ 0 /\ !2 /\ 5 \/ !2 \/ 1 /\ 3 \/ 5 /\ 7 /\ 7 \/ !2 /\ !0 /\ 5 \/ !3 \/ !3 /\ 2 /\ !2"#,
+        // r#"5 /\ !5 /\ 0 \/ 4 /\ 0 /\ 5 \/ 1 /\ !6 \/ 7"#,
+    ];
+    for test in sat_tests.iter().chain(unsat_tests.iter()) {
+        let cnf = CNF::parse(test).unwrap();
+        if let Some(assignments) = cnf.find_sat() {
+            println!("{}: {:?}", test, assignments);
+        } else {
+            println!("{}: unsat", test);
+        }
     }
 }
